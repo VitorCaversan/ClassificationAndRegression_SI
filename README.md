@@ -17,5 +17,8 @@ pip3 install plotly
 ```terminal
 pip3 install graphviz
 ```
+```terminal
+pip3 install tensorflow
+```
 
 After all is finished, you will be able to run the code.

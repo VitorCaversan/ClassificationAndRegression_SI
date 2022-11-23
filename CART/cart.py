@@ -13,11 +13,11 @@ import os
 import sys
 
 class Cart:
-    def __init__(self) -> None:
+    def __init__(self, csvFilePath: str) -> None:
         # To display more collumns
         pandas.options.display.max_columns = 50
 
-        self.fileData = pandas.read_csv('../tar2_sinais_vitais_treino_com_label.txt', encoding = 'utf-8')
+        self.fileData = pandas.read_csv(csvFilePath, encoding = 'utf-8')
 
         print(self.fileData)
 
