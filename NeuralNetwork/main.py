@@ -2,14 +2,15 @@ from neuralNetwork import NeuralNet
 
 def main():
     print("\nCreate (1) or load (0) model?: ", end='')
-    decision = int(input())
-    neuralNet = NeuralNet('../tar2_sinais_vitais_treino_com_label.txt')
-    isOk = True
+    isOk      = True
+    decision  = int(input())
 
     if decision == 1:
+        neuralNet = NeuralNet('../tar2_sinais_vitais_treino_com_label.txt')
         neuralNet.createModel()
         neuralNet.runModel()
     else:
+        neuralNet = NeuralNet('../tar2_sinais_vitais_teste_com_label.txt')
         isOk = neuralNet.loadModel()
 
     if isOk:

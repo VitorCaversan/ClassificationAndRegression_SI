@@ -9,16 +9,17 @@ from keras.models          import Sequential, load_model
 from keras.layers          import Activation, Dense
 from keras.utils           import normalize, to_categorical
 from sklearn.utils         import shuffle
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics       import mean_squared_error as MSE
 
 class NeuralNet:
     def __init__(self, csvFilePath) -> None:
         # pandas.options.display.max_columns = 50
         # self.fileData = pandas.read_csv(csvFilePath, encoding = 'utf-8')
-        self.fileData = self.manualParsing(csvFilePath)
-        self.colNames = []
-        self.input    = []
-        self.output   = []
+        self.fileData    = self.manualParsing(csvFilePath)
+        self.colNames    = []
+        self.input       = []
+        self.outputGrav  = []
+        self.outputClass = []
 
         return
 
@@ -29,35 +30,45 @@ class NeuralNet:
         # self.input  = self.fileData[['pSist', 'pDiast', 'qPA', 'pulso', 'resp', 'grav']] # NN samples
         # self.output = self.fileData['risco'].values # NN labels
 
-        gravRow = len(self.fileData[0]) - 2
+        gravRow  = len(self.fileData[0]) - 2
+        classRow = len(self.fileData[0]) - 1
         for row in shuffledData:
             self.input.append(row[3:-2])
-            self.output.append(row[gravRow])
+            self.outputGrav.append(row[gravRow])
+            self.outputClass.append(row[classRow] - 1)
 
         self.input = numpy.array(self.input)
         # self.input = normalize(self.input) # Normalize when values have a great range
 
-        self.output = numpy.array(self.output)
+        self.outputGrav  = numpy.array(self.outputGrav)
         # An encoding to classify each label with only one bit. Used for multiclass:
-        # self.output = to_categorical(self.output, num_classes=4, dtype=int)
+        self.outputClass = to_categorical(self.outputClass, num_classes=4, dtype=int)
+        self.outputClass = numpy.array(self.outputClass)
 
         print(self.colNames)
         print(self.input)
-        print(self.output)
+        print(self.outputGrav)
+        print(self.outputClass)
 
-        self.model = Sequential([Dense(units=128, input_dim=3, activation='relu'),
-                                 Dense(units=64, activation='relu'),
-                                 Dense(units=32, activation='relu'),
-                                 Dense(units=1, activation='linear')]) # 'softmax' for multiclass problems
+        self.modelGrav = Sequential([Dense(units=512, input_dim=3, activation='relu'),
+                                     Dense(units=256, activation='relu'),
+                                     Dense(units=128, activation='relu'),
+                                     Dense(units=1, activation='linear')])
 
-        self.model.summary()
+        self.modelClass = Sequential([Dense(units=512, input_dim=3, activation='relu'),
+                                      Dense(units=256, activation='relu'),
+                                      Dense(units=128, activation='relu'),
+                                      Dense(units=4, activation='softmax')]) # 'softmax' for multiclass problems
+
+        self.modelGrav.summary()
+        self.modelClass.summary()
 
         return
     
     def runModel(self):
-        self.model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0001), # Or rmsprop
-                           loss='mean_squared_error', # categorical_crossentropy for multiclass
-                           metrics=['mae'])
+        self.modelGrav.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0001), # Or rmsprop
+                               loss='mean_squared_error', # categorical_crossentropy for multiclass
+                               metrics=[tf.keras.metrics.RootMeanSquaredError()])
                                     # Other possible metrics:
                                     # 'accuracy',
                                     # tf.keras.metrics.Accuracy(name="accuracy"),
@@ -67,37 +78,68 @@ class NeuralNet:
                                     # tf.keras.metrics.FalsePositives(name="falsePositives"),
                                     # tf.keras.metrics.FalseNegatives(name="falseNegatives")])
 
-        self.model.fit(x=self.input,
-                       y=self.output,
-                       # steps_per_epoch=3, # completely fucks up the learning process
-                       validation_split=0.1,
-                       # batch_size=20,
-                       epochs=300,
-                       shuffle=True,
-                       verbose=1)
+        self.modelClass.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0001), # Or rmsprop
+                               loss='categorical_crossentropy', # categorical_crossentropy for multiclass
+                               metrics=['accuracy'])
+
+        self.modelGrav.fit(x=self.input,
+                           y=self.outputGrav,
+                           # steps_per_epoch=3, # completely fucks up the learning process
+                           validation_split=0.1,
+                           # batch_size=20,
+                           epochs=300,
+                           shuffle=True,
+                           verbose=1)
+
+        self.modelClass.fit(x=self.input,
+                           y=self.outputClass,
+                           # steps_per_epoch=3, # completely fucks up the learning process
+                           validation_split=0.1,
+                           # batch_size=20,
+                           epochs=300,
+                           shuffle=True,
+                           verbose=1)
 
         return
 
     def predictData(self, rowsQntToPredict: int) -> None:
-        predictions = self.model.predict(self.input[:rowsQntToPredict])
+        predictionsGrav  = self.modelGrav.predict(self.input[:rowsQntToPredict], verbose=2)
+        predictionsClass = self.modelClass.predict(self.input[:rowsQntToPredict], verbose=2)
+        mse_grav = MSE(self.outputGrav[:rowsQntToPredict], predictionsGrav)
+        rmse = mse_grav**(1/2)
 
-        print("Predicted values are: \n", predictions)
-        print("Real values are: \n", self.output[:rowsQntToPredict])
+        print("Predicted gravity values are: \n", predictionsGrav)
+        print("Real values are: \n", self.outputGrav[:rowsQntToPredict])
+        print("RMSE = ", rmse)
+        print("")
+
+        print("Predicted Classification values are: \n", predictionsClass)
+        print("Real values are: \n", self.outputClass[:rowsQntToPredict])
         print("")
 
         return
 
     def saveModel(self):
-        self.model.save('models/sinais_vitais_model.h5')
+        self.modelGrav.save('models/sinais_vitais_model.h5')
+        self.modelClass.save('models/sinais_vitais_modelClass.h5')
         return
 
     def loadModel(self) -> bool:
         try:
-            self.model  = load_model('models/sinais_vitais_model.h5')
-            gravRow = len(self.fileData[0]) - 2
+            self.modelGrav  = load_model('models/sinais_vitais_model.h5')
+            self.modelClass = load_model('models/sinais_vitais_modelClass.h5')
+            gravRow  = len(self.fileData[0]) - 2
+            classRow = len(self.fileData[0]) - 1
             for row in self.fileData[1:]:
                 self.input.append(row[3:-2])
-                self.output.append(row[gravRow])
+                self.outputGrav.append(row[gravRow])
+                self.outputClass.append(row[classRow] - 1)
+
+            self.input = numpy.array(self.input)
+            self.outputGrav  = numpy.array(self.outputGrav)
+            # An encoding to classify each label with only one bit. Used for multiclass:
+            self.outputClass = to_categorical(self.outputClass, num_classes=4, dtype=int)
+            self.outputClass = numpy.array(self.outputClass)
             return True
         except:
             print("file was not found \n")
